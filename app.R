@@ -9,7 +9,7 @@ mds_df <- list_objs$mds_df
 rownames(mds_df) <- c(1:dim(mds_df)[1])
 # Plotting mds parameters
 # Conf modebar
-conf_ <- c("zoomIn2d", "zoomOut2d", #"select2d", 
+conf_ <- c(#"zoomIn2d", "zoomOut2d", #"select2d", 
           "toImage", "autoScale2d",
           "toggleSpikelines", "hoverCompareCartesian", 
           "hoverClosestCartesian") 
@@ -102,6 +102,7 @@ server <- function(input, output, session) {
                       hovertemplate = paste('%{text}')) %>% 
             add_trace(x = NA, y = NA, name = 'Selected') %>% # Ampty trace
             layout(xaxis = xax_mds, yaxis = yax_mds, dragmode = 'pan',
+                   legend = list(title = list(text = '<b>Protein<br>Conformations:</b>')),
                    title = list(text = paste0('cMDS subspace (',
                                               input$mds_subspace, ')'), x = 0.1)) %>%
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
@@ -146,7 +147,8 @@ server <- function(input, output, session) {
                       box = list(visible = T), key = rownames(mds_df))
         }
         fig_swarm <- layout(fig_swarm, xaxis = xax_sw, yaxis = yax_sw, 
-                            dragmode = 'pan', 
+                            dragmode = 'select', 
+                            legend = list(title = list(text = '<b>Ligand<br>Databases:</b>')),
                             title = list(text = paste0('AUC values (Vinardo ',
                                           input$dk_score, ')'), x = 0.1)) %>% 
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
