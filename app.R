@@ -1,5 +1,6 @@
 library(shiny)
 library(shinythemes)
+library(plotly)
 
 # Load the date once
 # Load the RDS file
@@ -32,7 +33,7 @@ pal <- c("#f64b3c", "#5b8c5a", "#2a7886", "#feb72b", "#29c7ac")
 pal <- setNames(pal, c('active', 'inact_a', 'inact_b', 'inact_ope', 'dfg_out'))
 pal_violin <- c('#2a7886', '#f1935c', '#ed7575')
 
-
+##### USER INTERFACE #####
 ui <- fluidPage(
     theme=shinytheme('journal'),
 
@@ -49,20 +50,22 @@ ui <- fluidPage(
                     inputId = 'mds_subspace',
                     label = 'cMDS subspace',
                     choices = c('Pisani Resiudes', 'Pocket Residues')
-                ))),
+                ), class = "col-md-12")),
             fluidRow(
                 column(6, selectInput(
                     inputId = 'dk_score',
                     label = 'Docking score type:',
                     choices = c('Docking Score', 'Ligand Efficiency Score')
-                )))
+                ), class = "col-md-12"))
         ),
 
         # Show a plot of the generated distribution
         mainPanel(
             fluidRow(
-                column(6, plotlyOutput(outputId = 'mdsPlot')),
-                column(6, plotlyOutput(outputId = 'swarmPlot'))
+                column(12, plotlyOutput(outputId = 'mdsPlot'),
+                       class = "col-md-6"),
+                column(12, plotlyOutput(outputId = 'swarmPlot'),
+                       class = "col-md-6")
             ),
             verbatimTextOutput("click")
         )
