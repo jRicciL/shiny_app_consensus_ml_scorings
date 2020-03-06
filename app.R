@@ -9,7 +9,7 @@ mds_df <- list_objs$mds_df
 rownames(mds_df) <- c(1:dim(mds_df)[1])
 # Plotting mds parameters
 # Conf modebar
-conf_ <- c("zoomIn2d", "zoomOut2d", "select2d", 
+conf_ <- c("zoomIn2d", "zoomOut2d", #"select2d", 
           "toImage", "autoScale2d",
           "toggleSpikelines", "hoverCompareCartesian", 
           "hoverClosestCartesian") 
@@ -128,7 +128,6 @@ server <- function(input, output, session) {
                                      width = 2)), name = 'Selected'))
     }) 
     
-     
     #**** Violin plots ****
     output$swarmPlot <- renderPlotly({
         # DkScore and DkLEff
@@ -150,9 +149,28 @@ server <- function(input, output, session) {
                             dragmode = 'pan', 
                             title = list(text = paste0('AUC values (Vinardo ',
                                           input$dk_score, ')'), x = 0.1)) %>% 
-            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
-        fig_swarm
+            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
+            event_register('plotly_selecting')
     })
+    
+    observeEvent(event_data("plotly_selected"), {
+        d <- event_data("plotly_selected")
+        row_num <- d$key # Get the row numbers
+        mds_ <- mds_subspaces()
+        sliced_df <- mds_df[row_num, ]
+        # Remove the previous selected point if it exist
+        plotlyProxy('mdsPlot', session) %>%
+            plotlyProxyInvoke("deleteTraces", -1)
+        # Add the new trace
+        plotlyProxy('mdsPlot', session) %>%
+            plotlyProxyInvoke('addTraces', 
+                              list(x = sliced_df[[mds_[1]]], 
+                                   y = sliced_df[[mds_[2]]],
+                                   size = 30, type = 'scatter', mode = 'markers',
+                                   marker = list(color = 'rgba(0, 0, 0, 0)',
+                                                 line = list(color = 'rgba(0, 0, 0, 1)',
+                                                             width = 2)), name = 'Selected'))
+    }) 
     
     output$click <- renderPrint({
         d <- event_data("plotly_click")
