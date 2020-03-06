@@ -71,6 +71,7 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
+    
     #*** MDS Parameters ***
     mds_subspaces <- reactive({
         switch (input$mds_subspace,
@@ -86,10 +87,6 @@ server <- function(input, output, session) {
         dk_columns_ <- grep(score_, colnames(mds_df), ignore.case =T, value = T)
     })
    
-    clicked_point <- reactive({
-        d <- event_data("plotly_click")
-        d$key
-    }) 
     
     #####################
     #***** OUTPUTS *****#
@@ -103,33 +100,43 @@ server <- function(input, output, session) {
                       text = text_hover,
                       size = mds_df$Inhib_mass,
                       hovertemplate = paste('%{text}')) %>% 
+            add_trace(x = NA, y = NA, name = 'Selected') %>% # Ampty trace
             layout(xaxis = xax_mds, yaxis = yax_mds, dragmode = 'pan',
                    title = list(text = paste0('cMDS subspace (',
                                               input$mds_subspace, ')'), x = 0.1)) %>%
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
             event_register("plotly_click")
-        # Add selected point
-        key <- clicked_point()
-        if (!is.null(key)) {
-            sliced_df <- mds_df[key, ]
-            fig_mds <- add_trace(fig_mds, x = sliced_df[[mds_[1]]], 
-                                      y = sliced_df[[mds_[2]]],
-                                      size = 8,
-                                      marker = list(color = 'rgba(0, 0, 0, 0)',
-                                      line = list(color = 'rgba(0, 0, 0, 1)',
-                                      width = 2)), name = 'Selected')
-        }
-        fig_mds
+        
     })
     
+    observeEvent(event_data("plotly_click"), {
+        d <- event_data("plotly_click")
+        row_num <- d$key # Get the row number
+        mds_ <- mds_subspaces()
+        sliced_df <- mds_df[row_num, ]
+        # Remove the previous selected point if it exist
+        plotlyProxy('mdsPlot', session) %>%
+            plotlyProxyInvoke("deleteTraces", -1)
+        # Add the new trace
+        plotlyProxy('mdsPlot', session) %>%
+            plotlyProxyInvoke('addTraces', 
+                  list(x = rep(sliced_df[[mds_[1]]], 2), 
+                       y = rep(sliced_df[[mds_[2]]], 2),
+                       size = 30, type = 'scatter', mode = 'markers',
+                       marker = list(color = 'rgba(0, 0, 0, 0)',
+                                     line = list(color = 'rgba(0, 0, 0, 1)',
+                                     width = 2)), name = 'Selected'))
+    }) 
+    
+     
     #**** Violin plots ****
     output$swarmPlot <- renderPlotly({
         # DkScore and DkLEff
         score_cols <- dk_score()
-        point <- clicked_point()
+
         fig_swarm <- plot_ly(type = 'violin', data = mds_df, 
                              points = "all", jitter = 1,
-                             selectedpoints = c(point), text = text)
+                             text = text)
         i = 0
         for (score_ in score_cols) {
             i = i + 1
@@ -143,7 +150,7 @@ server <- function(input, output, session) {
                             dragmode = 'pan', 
                             title = list(text = paste0('AUC values (Vinardo ',
                                           input$dk_score, ')'), x = 0.1)) %>% 
-        config(modeBarButtonsToRemove = conf_, displaylogo = FALSE)
+            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
         fig_swarm
     })
     
