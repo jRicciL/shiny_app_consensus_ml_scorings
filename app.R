@@ -1,11 +1,17 @@
 library(shiny)
 library(shinythemes)
 library(plotly)
+library(dplyr)
 
 # Load the date once
+df_consensus <- read.csv('data/kmeans_cosensus_scorings.csv')
+# Save it on a list to simulate the future behaviour
+scores = list(kmeans = df_consensus)
+
 # Load the RDS file
 list_objs <- readRDS('data/data.rds')
 
+#*********** MDS and Violin Plots ***************
 mds_df <- list_objs$mds_df
 rownames(mds_df) <- c(1:dim(mds_df)[1])
 # Plotting mds parameters
@@ -45,22 +51,37 @@ ui <- fluidPage(
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
+            # Feature Selection and Score Type Parameters
             fluidRow(
-                column(6, selectInput(
+                checkboxGroupInput(
+                    inputId = 'sel_feat_methos',
+                    label = 'Method for Selection Features',
+                    choices = list('Kmeans' = 'kmeans', 
+                                      'RFE' = 'rfe', 
+                                      'Random' = 'random'),
+                    selected = 'kmeans',
+                    inline = TRUE)
+            ),
+            fluidRow(
+                column(12, selectInput(
+                    inputId = 'dk_score',
+                    label = 'Docking score type:',
+                    choices = c('Docking Score', 'Ligand Efficiency Score')
+                ))),
+            fluidRow(
+                column(12, selectInput(
                     inputId = 'mds_subspace',
                     label = 'cMDS subspace',
                     choices = c('Pisani Resiudes', 'Pocket Residues')
                 ))),
-            fluidRow(
-                column(6, selectInput(
-                    inputId = 'dk_score',
-                    label = 'Docking score type:',
-                    choices = c('Docking Score', 'Ligand Efficiency Score')
-                )))
+            
         ),
 
         # Show a plot of the generated distribution
         mainPanel(
+            fluidRow(plotlyOutput(
+                outputId = 'linearPlot'
+            )),
             fluidRow(
                 column(12, plotlyOutput(outputId = 'mdsPlot'),
                        class = "col-md-6"),
@@ -74,7 +95,9 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
-    
+   
+    #*** Linear Plot ***
+     
     #*** MDS Parameters ***
     mds_subspaces <- reactive({
         switch (input$mds_subspace,
@@ -89,10 +112,42 @@ server <- function(input, output, session) {
             'Ligand Efficiency Score' = 'dklef')
         dk_columns_ <- grep(score_, colnames(mds_df), ignore.case =T, value = T)
     })
+    
+    linsData <- reactive({
+        score_ <- switch (input$dk_score,
+                          'Docking Score' = 'dksc',
+                          'Ligand Efficiency Score' = 'dklef')
+        
+        # Get the inputs from groupBox
+        gb_values = input$sel_feat_methos
+        
+        # if kmeans is inside the values, update the value with mds_sub
+        if('kmeans' %in% gb_values) {
+            # Get subspace
+            mds_sub <- switch (input$mds_subspace,
+                               'Pisani Resiudes' = 'pisani',
+                               'Pocket Residues' = 'pocket')
+            # Get the kmeasn string position
+            pos <- match('kmeans', gb_values)
+            # Update the list of values
+            gb_values[pos] <- paste0('kmeans', '-', mds_sub)
+        }
+        
+        # Filter the values according to the dk_score and the method selected
+        data_ <- df_consensus %>%
+                 filter(X0 == score_ & X1 %in% gb_values)
+    })
    
     
     #####################
     #***** OUTPUTS *****#
+    
+    output$linearPlot <- renderPlotly({
+        data <- linsData()
+        fig_linp <- plot_ly(type = 'scatter', mode = 'lines', data = data) %>%
+            a
+    })
+    
     output$mdsPlot <- renderPlotly({
         mds_ <- mds_subspaces()
         fig_mds <- plot_ly(type = 'scatter', mode = 'markers', 
