@@ -50,13 +50,13 @@ ui <- fluidPage(
                     inputId = 'mds_subspace',
                     label = 'cMDS subspace',
                     choices = c('Pisani Resiudes', 'Pocket Residues')
-                ), class = "col-md-12")),
+                ))),
             fluidRow(
                 column(6, selectInput(
                     inputId = 'dk_score',
                     label = 'Docking score type:',
                     choices = c('Docking Score', 'Ligand Efficiency Score')
-                ), class = "col-md-12"))
+                )))
         ),
 
         # Show a plot of the generated distribution
