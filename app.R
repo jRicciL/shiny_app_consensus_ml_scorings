@@ -26,14 +26,15 @@ conf_ <- c(#"zoomIn2d", "zoomOut2d", #"select2d",
 
 #### LINE PLOT
 ax_lp <- list(linecolor = toRGB('black'), automargin = T, mirror = T,
-              linewidth = 2, showline = T)
+              linewidth = 3, showline = T, dtick = 25, 
+              title = 'Number of used Protein Conformations')
 yax_lp <- ax_lp; yax_lp[['range']] <- c(0.3, 1)
 yax_lp[['dtick']] <- 0.1
-
+yax_lp[['title']] <- 'ROC-AUC'
 #### MDS and VIOLIN PLOT
 # Axes
 ax_mds <- list(linecolor = toRGB('black'), automargin = T, 
-               scaleratio =1, scaleanchor = "x",  dtick = 0.25, linewidth = 2,
+               scaleratio =1, scaleanchor = "x",  dtick = 0.25, linewidth = 3,
                zerolinecolor = toRGB('grey'), zerolinewidth = 2, mirror = T, showline = T)
 yax_mds <- ax_mds; yax_mds[['title']] <- 'Second Dimension'
 xax_mds <- ax_mds; xax_mds[['title']] <- 'First Dimension'
@@ -57,51 +58,83 @@ ui <- fluidPage(
     theme=shinytheme('journal'),
 
     # Application title
-    titlePanel("CDK2: Consensus/ML Scorings"),
+    titlePanel("CDK2 Protein: Consensus/ML Scorings"),
     
-    fluidRow(wellPanel('Esta es una barra superior')),
+    #fluidRow(wellPanel('Esta es una barra superior')),
     
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
             # Feature Selection and Score Type Parameters
             fluidRow(
-                radioButtons(
-                    inputId = 'sel_feat_methos',
-                    label = 'Method for Selection Features',
-                    choices = list('Kmeans' = 'kmeans', 
-                                      'RFE' = 'rfe', 
-                                      'Random' = 'random'),
-                    selected = 'kmeans',
-                    inline = TRUE)
-            ),
+                column(12, 
+                       checkboxGroupInput(
+                           inputId = 'database',
+                           label = 'Ligand Database:',
+                           choices = list('CSAR' = 'csar',
+                                          'DUD' = 'dud',
+                                          'DEKOIS2.0' = 'dekois2')
+                       ))),
+            # Feature Selection and Score Type Parameters
             fluidRow(
-                column(12, selectInput(
+                column(12, 
+                    selectInput(
                     inputId = 'dk_score',
                     label = 'Docking score type:',
-                    choices = c('Docking Score', 'Ligand Efficiency Score')
+                    choices = list('Docking Score' = 'dksc',
+                                   'Ligand Efficiency Score' = 'dklef') 
+                ))),
+            hr(),
+            fluidRow(
+                column(12,
+                  radioButtons(
+                    inputId = 'sel_feat_methos',
+                    label = 'Method used for Feature Selection',
+                    choices = list('Kmeans' = 'kmeans', 
+                                  'RFE' = 'rfe', 
+                                  'Random' = 'random'),
+                    selected = 'kmeans',
+                    inline = TRUE
                 ))),
             fluidRow(
                 column(12, selectInput(
                     inputId = 'mds_subspace',
-                    label = 'cMDS subspace',
-                    choices = c('Pisani Resiudes', 'Pocket Residues')
+                    label = 'cMDS subspace (only affects k-means selection):',
+                    choices = list('Pisani Resiudes' = 'pisani', 
+                                   'Pocket Residues' = 'pocket')
                 ))),
-            
+            width = 3
         ),
 
-        # Show a plot of the generated distribution
+        # PLOTTING PANEL
         mainPanel(
-            fluidRow(plotlyOutput(
-                outputId = 'linearPlot'
-            )),
+            # Main Plot: Line plot for Consensus and ML AUC values
             fluidRow(
-                column(12, plotlyOutput(outputId = 'mdsPlot'),
+                h3('Title of the LinePlot',
+                   class = 'text-center'),
+                plotlyOutput(
+                outputId = 'linearPlot'
+            ), style = 'padding-right: 40px;'),
+            # MDS and Violin Plots to view conformations selected
+            fluidRow(
+                # MDS Plot
+                column(12,
+                    fluidRow(
+                       h4(textOutput("mds_title"), 
+                          class = 'text-center'),
+                       plotlyOutput(outputId = 'mdsPlot')),
                        class = "col-md-6"),
-                column(12, plotlyOutput(outputId = 'swarmPlot'),
-                       class = "col-md-6")
+                # Violin Plots of AUC Values
+                column(12, 
+                    fluidRow(
+                       h4(textOutput('viol_title'),
+                         class = 'text-center'),
+                       plotlyOutput(outputId = 'swarmPlot')),
+                       class = "col-md-6"), 
+                style = 'padding-top: 15px;'
             ),
-            verbatimTextOutput("click")
+           # verbatimTextOutput("click")
+           width = 9
         )
     )
 )
@@ -110,34 +143,14 @@ ui <- fluidPage(
 server <- function(input, output, session) {
    
     #*** Linear Plot ***
-     
-    #*** MDS Parameters ***
-    mds_subspaces <- reactive({
-        switch (input$mds_subspace,
-            'Pisani Resiudes' = c('pisani.dim1', 'pisani.dim2'),
-            'Pocket Residues' = c('pocket.dim1', 'pocket.dim2')
-        )
-    })
-    
-    dk_score <- reactive({
-        score_ <- switch (input$dk_score,
-            'Docking Score' = 'dksc',
-            'Ligand Efficiency Score' = 'dklef')
-        dk_columns_ <- grep(score_, colnames(mds_df), ignore.case =T, value = T)
-    })
-    
-    scores_data <- reactive({
-        score_ <- switch (input$dk_score,
-                          'Docking Score' = 'dksc',
-                          'Ligand Efficiency Score' = 'dklef')
+     scores_data <- reactive({
+        score_ <- input$dk_score
         # Get the value from the radio button
         rd_value = input$sel_feat_methos
         # if kmeans is inside the values, update the value with mds_sub
         if('kmeans' == rd_value) {
             # Get subspace
-            mds_sub <- switch (input$mds_subspace,
-                               'Pisani Resiudes' = 'pisani',
-                               'Pocket Residues' = 'pocket')
+            mds_sub <- input$mds_subspace
             # Update the value
             rd_value <- paste0('kmeans', '-', mds_sub)
         }
@@ -149,23 +162,50 @@ server <- function(input, output, session) {
         colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
         return(data_df)
     })
-   
+     
+    #*** MDS Parameters ***
+    mds_subspaces <- reactive({
+        paste0(input$mds_subspace, c('.dim1', '.dim2'))
+    })
+    
+    dk_score <- reactive({
+        score_ <- input$dk_score
+        dk_columns_ <- grep(score_, colnames(mds_df), ignore.case =T, value = T)
+    })
     
     #####################
     #***** OUTPUTS *****#
     
+    #***** Text updaters
+    # MDS Updater
+    observe({
+        mds_sub <- input$mds_subspace
+        mds_title <- paste0('cMDS subspace (', mds_sub, ')')
+        output$mds_title <- renderText({mds_title})
+    })
+    # Violin plor Updater
+    observe({
+        dkscore <- input$dk_score
+        viol_title <- paste0('AUC Values (Vinardo ', dkscore, ')')
+        output$viol_title <- renderText({viol_title})
+    })
+    
+    #***** Linear Plots
     output$linearPlot <- renderPlotly({
         data_df <- scores_data()
         fig <- plot_ly(type = 'scatter', mode = 'lines')
         for(col in colnames(data_df)){
             line_ <- switch (strsplit(col, ' ')[[1]][1],
-                             'CSAR' = 'solid',
+                             'CSAR' = 'dashdot',
                              'DUD' = 'dashdot',
-                             'DEKOIS' = 'dot')
+                             'DEKOIS' = 'solid')
             fig <- fig %>% add_trace(y = data_df[[col]], 
                             name = col, line = list(dash = line_))
         }
-        fig %>% layout(xaxis = ax_lp, yaxis = yax_lp)
+        fig %>% layout(xaxis = ax_lp, yaxis = yax_lp, 
+                       legend = list(title = 
+                                list(text = '<b>DB/<br>Method:</b>'))) %>%
+            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
     })
     
     output$mdsPlot <- renderPlotly({
@@ -180,9 +220,10 @@ server <- function(input, output, session) {
                       hovertemplate = paste('%{text}')) %>% 
             add_trace(x = NA, y = NA, name = 'Selected') %>% # Ampty trace
             layout(xaxis = xax_mds, yaxis = yax_mds, dragmode = 'pan',
-                   legend = list(title = list(text = '<b>Protein<br>Conformations:</b>')),
-                   title = list(text = paste0('cMDS subspace (',
-                                              input$mds_subspace, ')'), x = 0.1)) %>%
+                   legend = list(title = 
+                            list(text = '<b>Protein<br>Conformations:</b>'))) %>%
+                   # title = list(text = paste0('cMDS subspace (',
+                   #                            input$mds_subspace, ')'), x = 0.1)) %>%
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
             event_register("plotly_click")
         
@@ -226,9 +267,8 @@ server <- function(input, output, session) {
         }
         fig_swarm <- layout(fig_swarm, xaxis = xax_sw, yaxis = yax_sw, 
                             dragmode = 'select', 
-                            legend = list(title = list(text = '<b>Ligand<br>Databases:</b>')),
-                            title = list(text = paste0('AUC values (Vinardo ',
-                                          input$dk_score, ')'), x = 0.1)) %>% 
+                            legend = list(title = 
+                                    list(text = '<b>Ligand<br>Databases:</b>'))) %>% 
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
             event_register('plotly_selecting')
     })
@@ -246,10 +286,11 @@ server <- function(input, output, session) {
             plotlyProxyInvoke('addTraces', 
                               list(x = sliced_df[[mds_[1]]], 
                                    y = sliced_df[[mds_[2]]],
+                                   hoverinfo='skip',
                                    size = 30, type = 'scatter', mode = 'markers',
                                    marker = list(color = 'rgba(0, 0, 0, 0)',
                                                  line = list(color = 'rgba(0, 0, 0, 1)',
-                                                             width = 2)), name = 'Selected'))
+                                                 width = 2)), name = 'Selected'))
     }) 
     
     output$click <- renderPrint({
