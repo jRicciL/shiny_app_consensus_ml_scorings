@@ -6,7 +6,10 @@ library(dplyr)
 # Load the date once
 df_consensus <- read.csv('data/kmeans_cosensus_scorings.csv')
 # Save it on a list to simulate the future behaviour
-scores = list(kmeans = df_consensus)
+# scores = list(kmeans = df_consensus)
+# Get the number of observations
+n_ <- length(data) - 5 # Because always the first columns are not auc values
+n_steps <- c(1: n_)
 
 # Load the RDS file
 list_objs <- readRDS('data/data.rds')
@@ -20,6 +23,14 @@ conf_ <- c(#"zoomIn2d", "zoomOut2d", #"select2d",
           "toImage", "autoScale2d",
           "toggleSpikelines", "hoverCompareCartesian", 
           "hoverClosestCartesian") 
+
+#### LINE PLOT
+ax_lp <- list(linecolor = toRGB('black'), automargin = T, mirror = T,
+              linewidth = 2, showline = T)
+yax_lp <- ax_lp; yax_lp[['range']] <- c(0.3, 1)
+yax_lp[['dtick']] <- 0.1
+
+#### MDS and VIOLIN PLOT
 # Axes
 ax_mds <- list(linecolor = toRGB('black'), automargin = T, 
                scaleratio =1, scaleanchor = "x",  dtick = 0.25, linewidth = 2,
@@ -27,7 +38,9 @@ ax_mds <- list(linecolor = toRGB('black'), automargin = T,
 yax_mds <- ax_mds; yax_mds[['title']] <- 'Second Dimension'
 xax_mds <- ax_mds; xax_mds[['title']] <- 'First Dimension'
 # Violin axis
-yax_sw <- ax_mds; yax_sw[['title']] <- 'ROC-AUC'; yax_sw[['range']] <- c(0.3, 1)
+yax_sw <- ax_mds; yax_sw[['title']] <- 'ROC-AUC'
+yax_sw[['range']] <- c(0.3, 1)
+yax_sw[['dtick']] <- 0.1
 xax_sw <- ax_mds; xax_sw[['title']] <- 'Databases'
 # Text hover
 text_hover <- ~paste('<b>PDB id:</b>', mds_df$X,
@@ -53,7 +66,7 @@ ui <- fluidPage(
         sidebarPanel(
             # Feature Selection and Score Type Parameters
             fluidRow(
-                checkboxGroupInput(
+                radioButtons(
                     inputId = 'sel_feat_methos',
                     label = 'Method for Selection Features',
                     choices = list('Kmeans' = 'kmeans', 
@@ -113,29 +126,28 @@ server <- function(input, output, session) {
         dk_columns_ <- grep(score_, colnames(mds_df), ignore.case =T, value = T)
     })
     
-    linsData <- reactive({
+    scores_data <- reactive({
         score_ <- switch (input$dk_score,
                           'Docking Score' = 'dksc',
                           'Ligand Efficiency Score' = 'dklef')
-        
-        # Get the inputs from groupBox
-        gb_values = input$sel_feat_methos
-        
+        # Get the value from the radio button
+        rd_value = input$sel_feat_methos
         # if kmeans is inside the values, update the value with mds_sub
-        if('kmeans' %in% gb_values) {
+        if('kmeans' == rd_value) {
             # Get subspace
             mds_sub <- switch (input$mds_subspace,
                                'Pisani Resiudes' = 'pisani',
                                'Pocket Residues' = 'pocket')
-            # Get the kmeasn string position
-            pos <- match('kmeans', gb_values)
-            # Update the list of values
-            gb_values[pos] <- paste0('kmeans', '-', mds_sub)
+            # Update the value
+            rd_value <- paste0('kmeans', '-', mds_sub)
         }
-        
-        # Filter the values according to the dk_score and the method selected
-        data_ <- df_consensus %>%
-                 filter(X0 == score_ & X1 %in% gb_values)
+        # Filter the requested values
+        data <- df_consensus %>%
+            filter(X0 %in% c(score_) & X1 %in% c(rd_value))
+        # Get the AUC values, transpose and name the columns
+        data_df <- as.data.frame(t(data[,-1:-5]))
+        colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
+        return(data_df)
     })
    
     
@@ -143,9 +155,17 @@ server <- function(input, output, session) {
     #***** OUTPUTS *****#
     
     output$linearPlot <- renderPlotly({
-        data <- linsData()
-        fig_linp <- plot_ly(type = 'scatter', mode = 'lines', data = data) %>%
-            a
+        data_df <- scores_data()
+        fig <- plot_ly(type = 'scatter', mode = 'lines')
+        for(col in colnames(data_df)){
+            line_ <- switch (strsplit(col, ' ')[[1]][1],
+                             'CSAR' = 'solid',
+                             'DUD' = 'dashdot',
+                             'DEKOIS' = 'dot')
+            fig <- fig %>% add_trace(y = data_df[[col]], 
+                            name = col, line = list(dash = line_))
+        }
+        fig %>% layout(xaxis = ax_lp, yaxis = yax_lp)
     })
     
     output$mdsPlot <- renderPlotly({
