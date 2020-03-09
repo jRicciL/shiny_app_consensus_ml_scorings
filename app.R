@@ -14,6 +14,16 @@ n_steps <- c(1: n_)
 # Load the RDS file
 list_objs <- readRDS('data/data.rds')
 
+# Reference values
+ref_values_dk_scores <- list(
+    'dksc' = list('csar' = 0.8486, 'dud' = 0.675, 'dekois' = 0.7904),
+    'dklef' = list('csar' = 0.9287, 'dud' = 0.7788, 'dekois' = 0.7342))
+
+# funtion to use apply
+get_col_names <- function(x, fig){
+    trace_name <- paste(c(toupper(x[4]), x[5]), collapse = ' ')
+}
+
 #*********** MDS and Violin Plots ***************
 mds_df <- list_objs$mds_df
 rownames(mds_df) <- c(1:dim(mds_df)[1])
@@ -25,8 +35,8 @@ conf_ <- c(#"zoomIn2d", "zoomOut2d", #"select2d",
           "hoverClosestCartesian") 
 
 #### LINE PLOT
-ax_lp <- list(linecolor = toRGB('black'), automargin = T, mirror = T,
-              linewidth = 3, showline = T, dtick = 25, 
+ax_lp <- list(linecolor = toRGB('black'), mirror = T,
+              linewidth = 3, showline = T, dtick = 25, marging = list(pad = 0),
               title = 'Number of used Protein Conformations')
 yax_lp <- ax_lp; yax_lp[['range']] <- c(0.3, 1)
 yax_lp[['dtick']] <- 0.1
@@ -70,10 +80,12 @@ ui <- fluidPage(
                 column(12, 
                        checkboxGroupInput(
                            inputId = 'database',
-                           label = 'Ligand Database:',
+                           label = 'Ligand Database (line plot):',
                            choices = list('CSAR' = 'csar',
                                           'DUD' = 'dud',
-                                          'DEKOIS2.0' = 'dekois2')
+                                          'DEKOIS2.0' = 'dekois'),
+                           selected = c('csar', 'dud', 'dekois'),
+                           inline = TRUE
                        ))),
             # Feature Selection and Score Type Parameters
             fluidRow(
@@ -91,8 +103,8 @@ ui <- fluidPage(
                     inputId = 'sel_feat_methos',
                     label = 'Method used for Feature Selection',
                     choices = list('Kmeans' = 'kmeans', 
-                                  'RFE' = 'rfe', 
-                                  'Random' = 'random'),
+                                   'RFE' = 'rfe', 
+                                   'Random' = 'random'),
                     selected = 'kmeans',
                     inline = TRUE
                 ))),
@@ -110,28 +122,31 @@ ui <- fluidPage(
         mainPanel(
             # Main Plot: Line plot for Consensus and ML AUC values
             fluidRow(
-                h3('Title of the LinePlot',
+                div(h4('Title of the LinePlot',
                    class = 'text-center'),
+                   style = 'margin-bottom: -20px; z-index: 100'),
                 plotlyOutput(
-                outputId = 'linearPlot'
-            ), style = 'padding-right: 40px;'),
+                outputId = 'linearPlot')
+            ),
+            hr(),
             # MDS and Violin Plots to view conformations selected
             fluidRow(
                 # MDS Plot
                 column(12,
                     fluidRow(
-                       h4(textOutput("mds_title"), 
+                       div(h4(textOutput("mds_title"), 
                           class = 'text-center'),
+                          style = 'margin-bottom: -20px; z-index: 100'),
                        plotlyOutput(outputId = 'mdsPlot')),
                        class = "col-md-6"),
                 # Violin Plots of AUC Values
                 column(12, 
                     fluidRow(
-                       h4(textOutput('viol_title'),
+                       div(h4(textOutput('viol_title'),
                          class = 'text-center'),
+                       style = 'margin-bottom: -20px; z-index: 100'),
                        plotlyOutput(outputId = 'swarmPlot')),
-                       class = "col-md-6"), 
-                style = 'padding-top: 15px;'
+                       class = "col-md-6")
             ),
            # verbatimTextOutput("click")
            width = 9
@@ -156,7 +171,8 @@ server <- function(input, output, session) {
         }
         # Filter the requested values
         data <- df_consensus %>%
-            filter(X0 %in% c(score_) & X1 %in% c(rd_value))
+            filter(X0 %in% c(score_) & X1 %in% c(rd_value) &
+                   X2 %in% input$database)
         # Get the AUC values, transpose and name the columns
         data_df <- as.data.frame(t(data[,-1:-5]))
         colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
@@ -180,29 +196,51 @@ server <- function(input, output, session) {
     # MDS Updater
     observe({
         mds_sub <- input$mds_subspace
-        mds_title <- paste0('cMDS subspace (', mds_sub, ')')
+        text_ <- switch(mds_sub,
+                        'pisani' = 'Pisani Residues',
+                        'pocket' = 'Pocket Residues')
+        mds_title <- paste0('cMDS subspace (', text_, ')')
         output$mds_title <- renderText({mds_title})
     })
     # Violin plor Updater
     observe({
         dkscore <- input$dk_score
-        viol_title <- paste0('AUC Values (Vinardo ', dkscore, ')')
+        text_ <- switch(dkscore,
+                        'dksc' = 'Docking Score',
+                        'dklef' = 'Ligand Efficency Score')
+        viol_title <- paste0('AUC Values (Vinardo ', text_, ')')
         output$viol_title <- renderText({viol_title})
     })
     
     #***** Linear Plots
     output$linearPlot <- renderPlotly({
-        data_df <- scores_data()
+        
         fig <- plot_ly(type = 'scatter', mode = 'lines')
+        # Draw the reference values
+        ref_values_ <- ref_values_dk_scores[[input$dk_score]]
+        database_names <- names(ref_values_)
+        for(db in database_names){
+            fig <- fig %>% 
+                add_segments(x = 0, xend = 402, 
+                             y = ref_values_[[db]], yend = ref_values_[[db]], 
+                             showlegend = FALSE, name = db,  opacity = 0.5,
+                             line = list(color = 'black', dash = 'dot', 
+                                          linewidth = 3)) %>%
+                add_text(x = 50, y = ref_values_[[db]], text = c(toupper(db)),
+                         showlegend = FALSE, textposition = "top")
+        }
+        # Draw the AUC results given the method
+        data_df <- scores_data()
         for(col in colnames(data_df)){
             line_ <- switch (strsplit(col, ' ')[[1]][1],
-                             'CSAR' = 'dashdot',
-                             'DUD' = 'dashdot',
+                             'CSAR' = 'solid',
+                             'DUD' = 'solid',
                              'DEKOIS' = 'solid')
             fig <- fig %>% add_trace(y = data_df[[col]], 
                             name = col, line = list(dash = line_))
         }
         fig %>% layout(xaxis = ax_lp, yaxis = yax_lp, 
+                       paper_bgcolor='rgba(0,0,0,0)', 
                        legend = list(title = 
                                 list(text = '<b>DB/<br>Method:</b>'))) %>%
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
@@ -220,6 +258,7 @@ server <- function(input, output, session) {
                       hovertemplate = paste('%{text}')) %>% 
             add_trace(x = NA, y = NA, name = 'Selected') %>% # Ampty trace
             layout(xaxis = xax_mds, yaxis = yax_mds, dragmode = 'pan',
+                   paper_bgcolor='rgba(0,0,0,0)', 
                    legend = list(title = 
                             list(text = '<b>Protein<br>Conformations:</b>'))) %>%
                    # title = list(text = paste0('cMDS subspace (',
@@ -265,7 +304,8 @@ server <- function(input, output, session) {
                       color = I(pal_violin[i]),
                       box = list(visible = T), key = rownames(mds_df))
         }
-        fig_swarm <- layout(fig_swarm, xaxis = xax_sw, yaxis = yax_sw, 
+        fig_swarm <- layout(fig_swarm, xaxis = xax_sw, yaxis = yax_sw,
+                            paper_bgcolor='rgba(0,0,0,0)', 
                             dragmode = 'select', 
                             legend = list(title = 
                                     list(text = '<b>Ligand<br>Databases:</b>'))) %>% 
