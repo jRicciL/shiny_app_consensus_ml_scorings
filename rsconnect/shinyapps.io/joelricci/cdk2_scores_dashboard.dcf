@@ -1,0 +1,12 @@
+name: cdk2_scores_dashboard
+title: cdk2_scores_dashboard
+username:
+account: joelricci
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 1922633
+bundleId: 2863523
+url: https://joelricci.shinyapps.io/cdk2_scores_dashboard/
+when: 1583743989.03931
+asMultiple: FALSE
+asStatic: FALSE
