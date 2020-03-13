@@ -2,9 +2,10 @@ library(shiny)
 library(shinythemes)
 library(plotly)
 library(dplyr)
+library(shinyjs)
 
 # Load the date once
-df_consensus <- read.csv('data/kmeans_cosensus_scorings.csv')
+df_consensus <- read.csv('data/cosensus_scorings.csv')
 # Save it on a list to simulate the future behaviour
 # scores = list(kmeans = df_consensus)
 # Get the number of observations
@@ -75,6 +76,42 @@ ui <- fluidPage(
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
+            # Consensus/
+            fluidRow(
+                column(6, 
+                       selectInput(
+                           inputId = 'consensus',
+                           label = 'Evaluation Method (CS/ML):',
+                           choices = list('Consensus Scoring' = 'cons_scoring',
+                                          'Manchine Learning Estimator' = 'ml_estimator')
+                       )),
+                column(6,
+                    conditionalPanel(
+                        condition = "input.consensus == 'cons_scoring'",
+                        checkboxGroupInput(
+                           inputId = 'cs_methods',
+                           label = 'CS or ML estimator used:',
+                           choices = list('Rank by number' = 'rbn', 
+                                          'Rank by score' = 'rbs',
+                                          'Rank by rank' = 'rbr',
+                                          'Rank by vote' = 'rbv',
+                                          'Rank by exp' = 'rexp*2'),
+                           selected = c('rbn', 'rbs', 'rbr', 'rbv', 'rexp*2')
+                       )),
+                    conditionalPanel(
+                        condition = "input.consensus == 'ml_estimator'",
+                        checkboxGroupInput(
+                            inputId = 'cs_methods',
+                            label = 'CS or ML estimator used:',
+                            choices = list('Linear SVC' = 'LinearSVC', 
+                                           'RBF SVC' = 'rbfSVC',
+                                           'Log. Regression' = 'LogReg',
+                                           'Decision Tree' = 'Tree'),
+                            selected = c('LinearSVC', 'rbfSVC', 
+                                         'LogReg', 'Tree')
+                        ))),
+            ),
+            hr(),
             # Feature Selection and Score Type Parameters
             fluidRow(
                 column(12, 
@@ -96,6 +133,7 @@ ui <- fluidPage(
                     choices = list('Docking Score' = 'dksc',
                                    'Ligand Efficiency Score' = 'dklef') 
                 ))),
+            
             hr(),
             fluidRow(
                 column(12,
@@ -103,7 +141,8 @@ ui <- fluidPage(
                     inputId = 'sel_feat_methos',
                     label = 'Method used for Feature Selection',
                     choices = list('Kmeans' = 'kmeans', 
-                                   'RFE' = 'rfe', 
+                                   'RFE' = 'rfe',
+                                   'Correlation' = 'correlated',
                                    'Random' = 'random'),
                     selected = 'kmeans',
                     inline = TRUE
@@ -226,7 +265,8 @@ server <- function(input, output, session) {
                              showlegend = FALSE, name = db,  opacity = 0.5,
                              line = list(color = 'black', dash = 'dot', 
                                           linewidth = 3)) %>%
-                add_text(x = 50, y = ref_values_[[db]], text = c(toupper(db)),
+                add_text(x = 50, y = ref_values_[[db]], 
+                         text = paste('max dk', toupper(db)),
                          showlegend = FALSE, textposition = "top")
         }
         # Draw the AUC results given the method
@@ -268,6 +308,17 @@ server <- function(input, output, session) {
         
     })
     
+    #*** Observe Events
+    observeEvent(input$consensus, {
+        if(input$consensus == 'cons_scoring'){
+            # Show Consensus Metrics
+            shinyjs::show(id = 'cs_methods')
+        } else {
+            # Show Machine Learning Estiamtors
+            shinyjs::hide(id = 'cs_methods')
+        }
+    })
+    
     observeEvent(event_data("plotly_click"), {
         d <- event_data("plotly_click")
         row_num <- d$key # Get the row number
@@ -294,11 +345,12 @@ server <- function(input, output, session) {
 
         fig_swarm <- plot_ly(type = 'violin', data = mds_df, 
                              points = "all", jitter = 1,
+                             side = 'positive',
                              text = text)
         i = 0
         for (score_ in score_cols) {
             i = i + 1
-            fig_swarm <- add_trace(fig_swarm, y = mds_df[[score_]], pointpos = 0, 
+            fig_swarm <- add_trace(fig_swarm, y = mds_df[[score_]], pointpos = -1, 
                       marker = list(size = marker_size), 
                       name = strsplit(score_, '_')[[1]][1],
                       color = I(pal_violin[i]),
@@ -309,7 +361,7 @@ server <- function(input, output, session) {
                             dragmode = 'select', 
                             legend = list(title = 
                                     list(text = '<b>Ligand<br>Databases:</b>'))) %>% 
-            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>%
+            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) %>% 
             event_register('plotly_selecting')
     })
     
