@@ -6,45 +6,7 @@ library(dplyr)
 ##### CONSENSUS SCORIGS
 df_consensus <- read.csv('data/kmeans_cosensus_scorings.csv')
 
-# Get the number of observations
-n <- length(data) - 5
-n_steps <- c(1: n)
 
-data <- df_consensus %>%
-  filter(X0 %in% c('dksc') & X1 %in% c('kmeans-pisani'))
-
-# funtion to use apply
-get_col_names <- function(x, fig){
-  trace_name <- paste(c(toupper(x[4]), x[5]), collapse = ' ')
-}
-
-# Transpose the data
-data_df <- as.data.frame(t(data[,-1:-5]))
-
-colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
-
-# Create the plot
-dim(data)
-fig <- plot_ly(type = 'scatter', mode = 'lines')
-for(col in colnames(data_df)){
-  line_ <- switch (strsplit(col, ' ')[[1]][1],
-    'CSAR' = 'solid',
-    'DUD' = 'dashdot',
-    'DEKOIS' = 'dot'
-  )
-  fig <- fig %>% add_trace(y = data_df[[col]], 
-                           name = col, line = list(dash = line_))
-}
-fig
-
-
-
-
-
-  add_trace(x = c(1:402), y = ~X1) %>%
-  add_trace(x = c(1:402), y = ~X2, name = '<b>Cvc</b>', showlegend = FALSE)
-
-fig
 
 ##### MDS
 # Load the conformatiosn data
@@ -66,6 +28,9 @@ colnames(mds_data) <- paste(rep(subspace_names, each = length(n_dims)), n_dims, 
 # Combine in a unique dataframe
 df_plot <- cbind(mds_data, df_prot)
 rownames(df_prot) <- df_prot$X
+
+
+
 # Need to save this dataframe as an R object
 list_objs = list(mds_df = df_plot)
 saveRDS(list_objs, 'data/data.rds')

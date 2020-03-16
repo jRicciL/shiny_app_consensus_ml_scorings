@@ -76,41 +76,16 @@ ui <- fluidPage(
     # Sidebar with a slider input for number of bins 
     sidebarLayout(
         sidebarPanel(
-            # Consensus/
+            # Feature Selection and Score Type Parameters
             fluidRow(
-                column(6, 
-                       selectInput(
-                           inputId = 'consensus',
-                           label = 'Evaluation Method (CS/ML):',
-                           choices = list('Consensus Scoring' = 'cons_scoring',
-                                          'Manchine Learning Estimator' = 'ml_estimator')
-                       )),
-                column(6,
-                    conditionalPanel(
-                        condition = "input.consensus == 'cons_scoring'",
-                        checkboxGroupInput(
-                           inputId = 'cs_methods',
-                           label = 'CS or ML estimator used:',
-                           choices = list('Rank by number' = 'rbn', 
-                                          'Rank by score' = 'rbs',
-                                          'Rank by rank' = 'rbr',
-                                          'Rank by vote' = 'rbv',
-                                          'Rank by exp' = 'rexp*2'),
-                           selected = c('rbn', 'rbs', 'rbr', 'rbv', 'rexp*2')
-                       )),
-                    conditionalPanel(
-                        condition = "input.consensus == 'ml_estimator'",
-                        checkboxGroupInput(
-                            inputId = 'cs_methods',
-                            label = 'CS or ML estimator used:',
-                            choices = list('Linear SVC' = 'LinearSVC', 
-                                           'RBF SVC' = 'rbfSVC',
-                                           'Log. Regression' = 'LogReg',
-                                           'Decision Tree' = 'Tree'),
-                            selected = c('LinearSVC', 'rbfSVC', 
-                                         'LogReg', 'Tree')
-                        ))),
-            ),
+                column(12, 
+                    selectInput(
+                    inputId = 'dk_score',
+                    label = 'Docking score type:',
+                    choices = list('Docking Score' = 'dksc',
+                                   'Ligand Efficiency Score' = 'dklef') 
+                ))),
+            
             hr(),
             # Feature Selection and Score Type Parameters
             fluidRow(
@@ -124,36 +99,65 @@ ui <- fluidPage(
                            selected = c('csar', 'dud', 'dekois'),
                            inline = TRUE
                        ))),
-            # Feature Selection and Score Type Parameters
+            hr(),
+            # Consensus/
             fluidRow(
                 column(12, 
-                    selectInput(
-                    inputId = 'dk_score',
-                    label = 'Docking score type:',
-                    choices = list('Docking Score' = 'dksc',
-                                   'Ligand Efficiency Score' = 'dklef') 
-                ))),
-            
+                       selectInput(
+                           inputId = 'consensus',
+                           label = 'Evaluation Method (CS/ML):',
+                           choices = list('Consensus Scoring' = 'cons_scoring',
+                                          'Manchine Learning Estimator' = 'ml_estimator'),
+                       ), class = "col-md-6"),
+                column(12,
+                    conditionalPanel(
+                        condition = "input.consensus == 'cons_scoring'",
+                        checkboxGroupInput(
+                           inputId = 'cs_methods',
+                           label = 'CS or ML estimator used:',
+                           choices = list('Rank by number' = 'rbn', 
+                                          'Rank by score' = 'rbs',
+                                          'Rank by rank' = 'rbr',
+                                          'Rank by vote' = 'rbv_*2',
+                                          'Rank by exp' = 'rexp*2'),
+                           selected = c('rbn', 'rbs', 'rbr', 'rbv_*2', 'rexp*2')
+                       )), 
+                    conditionalPanel(
+                        condition = "input.consensus == 'ml_estimator'",
+                        checkboxGroupInput(
+                            inputId = 'cs_methods',
+                            label = 'CS or ML estimator used:',
+                            choices = list('Linear SVC' = 'LinearSVC', 
+                                           'RBF SVC' = 'rbfSVC',
+                                           'Log. Regression' = 'LogReg',
+                                           'Decision Tree' = 'Tree'),
+                            selected = c('LinearSVC', 'rbfSVC', 
+                                         'LogReg', 'Tree')
+                        )),
+                    class = "col-md-6"),
+            ),
             hr(),
+            
             fluidRow(
                 column(12,
-                  radioButtons(
+                  selectInput(
                     inputId = 'sel_feat_methos',
-                    label = 'Method used for Feature Selection',
-                    choices = list('Kmeans' = 'kmeans', 
-                                   'RFE' = 'rfe',
-                                   'Correlation' = 'correlated',
-                                   'Random' = 'random'),
-                    selected = 'kmeans',
-                    inline = TRUE
-                ))),
+                    label = 'Method used for Conformational Selection',
+                    choices = list('K-means Medoids' = 'kmeans', 
+                                   'Recursive Feature Selection' = 'rfe',
+                                   'Correlated Features' = 'correlated',
+                                   'Random Selection' = 'random'),
+                    selected = 'kmeans'
+                ), class = "col-md-12")),
             fluidRow(
-                column(12, selectInput(
+                column(12, radioButtons(
                     inputId = 'mds_subspace',
                     label = 'cMDS subspace (only affects k-means selection):',
                     choices = list('Pisani Resiudes' = 'pisani', 
-                                   'Pocket Residues' = 'pocket')
-                ))),
+                                   'Pocket Residues' = 'pocket'),
+                    selected = 'pisani',
+                    inline = TRUE
+                ), class = "col-md-12")),
             width = 3
         ),
 
@@ -199,6 +203,7 @@ server <- function(input, output, session) {
     #*** Linear Plot ***
      scores_data <- reactive({
         score_ <- input$dk_score
+        cs_methods <- input$cs_methods
         # Get the value from the radio button
         rd_value = input$sel_feat_methos
         # if kmeans is inside the values, update the value with mds_sub
@@ -211,7 +216,7 @@ server <- function(input, output, session) {
         # Filter the requested values
         data <- df_consensus %>%
             filter(X0 %in% c(score_) & X1 %in% c(rd_value) &
-                   X2 %in% input$database)
+                   X2 %in% input$database & X3 %in% c(cs_methods))
         # Get the AUC values, transpose and name the columns
         data_df <- as.data.frame(t(data[,-1:-5]))
         colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
@@ -256,8 +261,8 @@ server <- function(input, output, session) {
         
         fig <- plot_ly(type = 'scatter', mode = 'lines')
         # Draw the reference values
-        ref_values_ <- ref_values_dk_scores[[input$dk_score]]
-        database_names <- names(ref_values_)
+        ref_values_ <- ref_values_dk_scores[[input$dk_score]] # To reactive
+        database_names <- names(ref_values_) # To reactive
         for(db in database_names){
             fig <- fig %>% 
                 add_segments(x = 0, xend = 402, 
@@ -282,7 +287,7 @@ server <- function(input, output, session) {
         fig %>% layout(xaxis = ax_lp, yaxis = yax_lp, 
                        paper_bgcolor='rgba(0,0,0,0)', 
                        legend = list(title = 
-                                list(text = '<b>DB/<br>Method:</b>'))) %>%
+                                list(text = '<b>Database & Method:</b>'))) %>%
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
     })
     
