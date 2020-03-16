@@ -5,15 +5,12 @@ library(dplyr)
 library(shinyjs)
 
 # Load the date once
-df_consensus <- read.csv('data/cosensus_scorings.csv')
-# Save it on a list to simulate the future behaviour
-# scores = list(kmeans = df_consensus)
-# Get the number of observations
-n_ <- length(data) - 5 # Because always the first columns are not auc values
-n_steps <- c(1: n_)
-
 # Load the RDS file
 list_objs <- readRDS('data/data.rds')
+
+# Get the consensus and ml dataframes
+df_consensus <- list_objs$df_consensus
+list_ml <- list_objs$list_ml
 
 # Reference values
 ref_values_dk_scores <- list(
@@ -22,7 +19,7 @@ ref_values_dk_scores <- list(
 
 # funtion to use apply
 get_col_names <- function(x, fig){
-    trace_name <- paste(c(toupper(x[4]), x[5]), collapse = ' ')
+    trace_name <- paste(c(toupper(x[5]), x[6]), collapse = ' ')
 }
 
 #*********** MDS and Violin Plots ***************
@@ -106,8 +103,9 @@ ui <- fluidPage(
                        selectInput(
                            inputId = 'consensus',
                            label = 'Evaluation Method (CS/ML):',
-                           choices = list('Consensus Scoring' = 'cons_scoring',
-                                          'Manchine Learning Estimator' = 'ml_estimator'),
+                           choices = list('Manchine Learning Estimator' = 'ml_estimator',
+                                          'Consensus Scoring' = 'cons_scoring'
+                                          ),
                        ), class = "col-md-6"),
                 column(12,
                     conditionalPanel(
@@ -116,23 +114,22 @@ ui <- fluidPage(
                            inputId = 'cs_methods',
                            label = 'CS or ML estimator used:',
                            choices = list('Rank by number' = 'rbn', 
-                                          'Rank by score' = 'rbs',
-                                          'Rank by rank' = 'rbr',
-                                          'Rank by vote' = 'rbv_*2',
-                                          'Rank by exp' = 'rexp*2'),
+                                          'Rank by score'  = 'rbs',
+                                          'Rank by rank'   = 'rbr',
+                                          'Rank by vote'   = 'rbv_*2',
+                                          'Rank by exp'    = 'rexp*2'),
                            selected = c('rbn', 'rbs', 'rbr', 'rbv_*2', 'rexp*2')
                        )), 
                     conditionalPanel(
                         condition = "input.consensus == 'ml_estimator'",
                         checkboxGroupInput(
-                            inputId = 'cs_methods',
+                            inputId = 'ml_methods',
                             label = 'CS or ML estimator used:',
-                            choices = list('Linear SVC' = 'LinearSVC', 
-                                           'RBF SVC' = 'rbfSVC',
-                                           'Log. Regression' = 'LogReg',
-                                           'Decision Tree' = 'Tree'),
-                            selected = c('LinearSVC', 'rbfSVC', 
-                                         'LogReg', 'Tree')
+                            choices = list('Linear SVC' = 'linearsvc', 
+                                           'RBF SVC' = 'rbfsvc',
+                                           'Log. Regression' = 'logrg'),
+                            selected = c('linearsvc', 'rbfsvc', 
+                                         'logrg')
                         )),
                     class = "col-md-6"),
             ),
@@ -203,7 +200,7 @@ server <- function(input, output, session) {
     #*** Linear Plot ***
      scores_data <- reactive({
         score_ <- input$dk_score
-        cs_methods <- input$cs_methods
+        
         # Get the value from the radio button
         rd_value = input$sel_feat_methos
         # if kmeans is inside the values, update the value with mds_sub
@@ -213,10 +210,22 @@ server <- function(input, output, session) {
             # Update the value
             rd_value <- paste0('kmeans', '-', mds_sub)
         }
+        # Select the correct methods
+        methods <- switch (input$consensus,
+            'cons_scoring' =  input$cs_methods,
+            'ml_estimator' = input$ml_methods
+        )
+        
+        # Select the dataset
+        main_df <- switch (input$consensus,
+            'cons_scoring' = df_consensus,
+            'ml_estimator' = list_ml[['csar']]
+        )
+        
         # Filter the requested values
-        data <- df_consensus %>%
-            filter(X0 %in% c(score_) & X1 %in% c(rd_value) &
-                   X2 %in% input$database & X3 %in% c(cs_methods))
+        data <- main_df %>%
+            filter(X1 %in% c(score_) & X2 %in% c(rd_value) &
+                   X3 %in% c(input$database) & X4 %in% c(methods))
         # Get the AUC values, transpose and name the columns
         data_df <- as.data.frame(t(data[,-1:-5]))
         colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
