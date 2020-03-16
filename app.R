@@ -12,14 +12,17 @@ list_objs <- readRDS('data/data.rds')
 df_consensus <- list_objs$df_consensus
 list_ml <- list_objs$list_ml
 
+# List of database names
+db_names <- list('CSAR' = 'csar', 'DUD' = 'dud', 'DEKOIS2.0' = 'dekois')
+
 # Reference values
 ref_values_dk_scores <- list(
-    'dksc' = list('csar' = 0.8486, 'dud' = 0.675, 'dekois' = 0.7904),
+    'dksc'  = list('csar' = 0.8486, 'dud' = 0.675, 'dekois' = 0.7904),
     'dklef' = list('csar' = 0.9287, 'dud' = 0.7788, 'dekois' = 0.7342))
 
 # funtion to use apply
 get_col_names <- function(x, fig){
-    trace_name <- paste(c(toupper(x[5]), x[6]), collapse = ' ')
+    trace_name <- paste0(c(toupper(x[5]), x[6]), collapse = ' ')
 }
 
 #*********** MDS and Violin Plots ***************
@@ -84,19 +87,6 @@ ui <- fluidPage(
                 ))),
             
             hr(),
-            # Feature Selection and Score Type Parameters
-            fluidRow(
-                column(12, 
-                       checkboxGroupInput(
-                           inputId = 'database',
-                           label = 'Ligand Database (line plot):',
-                           choices = list('CSAR' = 'csar',
-                                          'DUD' = 'dud',
-                                          'DEKOIS2.0' = 'dekois'),
-                           selected = c('csar', 'dud', 'dekois'),
-                           inline = TRUE
-                       ))),
-            hr(),
             # Consensus/
             fluidRow(
                 column(12, 
@@ -125,14 +115,55 @@ ui <- fluidPage(
                         checkboxGroupInput(
                             inputId = 'ml_methods',
                             label = 'CS or ML estimator used:',
-                            choices = list('Linear SVC' = 'linearsvc', 
-                                           'RBF SVC' = 'rbfsvc',
-                                           'Log. Regression' = 'logrg'),
-                            selected = c('linearsvc', 'rbfsvc', 
-                                         'logrg')
+                            choices = list('Linear SVC' = 'LinearSVC', 
+                                           'RBF SVC' = 'rbfSVC',
+                                           'Log. Regression' = 'LogRg'),
+                            selected = c('LinearSVC', 'rbfSVC', 
+                                         'LogRg')
                         )),
                     class = "col-md-6"),
             ),
+            hr(),
+            # Feature Selection and Score Type Parameters
+            fluidRow(
+                column(12, 
+                    conditionalPanel(
+                       condition = "input.consensus == 'cons_scoring'",
+                       checkboxGroupInput(
+                           inputId = 'database',
+                           label = 'Ligand Database (line plot):',
+                           choices = list('CSAR' = 'csar',
+                                          'DUD' = 'dud',
+                                          'DEKOIS2.0' = 'dekois'),
+                           selected = c('csar', 'dud', 'dekois'),
+                           inline = TRUE
+                       )
+                    ),
+                    conditionalPanel(
+                      condition = "input.consensus == 'ml_estimator'",
+                      fluidRow(
+                        column(12,
+                          selectInput(
+                            inputId = 'train_db',
+                            label = 'Training Database:',
+                            choices = list('CSAR' = 'csar',
+                                           'DUD' = 'dud',
+                                           'DEKOIS2.0' = 'dekois'),
+                          ),
+                          class = "col-md-6"
+                        ),
+                        column(12,
+                          checkboxGroupInput(
+                            inputId = 'test_db',
+                            label = 'Testing Databases:',
+                            choices = db_names
+                          ),
+                          class = "col-md-6"
+                        )
+                      )
+                    )
+                  )
+                ),
             hr(),
             
             fluidRow(
@@ -216,16 +247,22 @@ server <- function(input, output, session) {
             'ml_estimator' = input$ml_methods
         )
         
+        # Selects the databases
+        databases <- switch (input$consensus,
+             'cons_scoring' = input$database,
+             'ml_estimator' = input$test_db
+        )
+         
         # Select the dataset
         main_df <- switch (input$consensus,
             'cons_scoring' = df_consensus,
-            'ml_estimator' = list_ml[['csar']]
+            'ml_estimator' = list_ml[[input$train_db]]
         )
         
         # Filter the requested values
         data <- main_df %>%
             filter(X1 %in% c(score_) & X2 %in% c(rd_value) &
-                   X3 %in% c(input$database) & X4 %in% c(methods))
+                   X3 %in% c(databases) & X4 %in% c(methods))
         # Get the AUC values, transpose and name the columns
         data_df <- as.data.frame(t(data[,-1:-5]))
         colnames(data_df) <- apply(data, 1, get_col_names, fig = fig)
@@ -271,7 +308,13 @@ server <- function(input, output, session) {
         fig <- plot_ly(type = 'scatter', mode = 'lines')
         # Draw the reference values
         ref_values_ <- ref_values_dk_scores[[input$dk_score]] # To reactive
-        database_names <- names(ref_values_) # To reactive
+        #database_names <- names(ref_values_) # To reactive
+        # Selects the databases
+        database_names <- switch (input$consensus,
+             'cons_scoring' = input$database,
+             'ml_estimator' = input$test_db
+        )
+        
         for(db in database_names){
             fig <- fig %>% 
                 add_segments(x = 0, xend = 402, 
@@ -287,14 +330,14 @@ server <- function(input, output, session) {
         data_df <- scores_data()
         for(col in colnames(data_df)){
             line_ <- switch (strsplit(col, ' ')[[1]][1],
-                             'CSAR' = 'solid',
-                             'DUD' = 'solid',
+                             'CSAR'   = 'solid',
+                             'DUD'    = 'solid',
                              'DEKOIS' = 'solid')
             fig <- fig %>% add_trace(y = data_df[[col]], 
                             name = col, line = list(dash = line_))
         }
         fig %>% layout(xaxis = ax_lp, yaxis = yax_lp, 
-                       paper_bgcolor='rgba(0,0,0,0)', 
+                       paper_bgcolor = 'rgba(0,0,0,0)', 
                        legend = list(title = 
                                 list(text = '<b>Database & Method:</b>'))) %>%
             config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
@@ -323,6 +366,18 @@ server <- function(input, output, session) {
     })
     
     #*** Observe Events
+    
+    # Oserve Event to uodated Databases for training
+    observeEvent(input$train_db, {
+      db_choices <- db_names
+      db_choices[db_choices == input$train_db] <- NULL
+      updateCheckboxGroupInput(session = session,
+                               inputId = 'test_db',
+                               choices = db_choices,
+                               selected = db_choices)
+    })
+    
+    
     observeEvent(input$consensus, {
         if(input$consensus == 'cons_scoring'){
             # Show Consensus Metrics

@@ -4,9 +4,18 @@ library(plotly)
 library(dplyr)
 
 ##### CONSENSUS SCORIGS
-df_consensus <- read.csv('data/kmeans_cosensus_scorings.csv')
+df_consensus <- read.csv('data/cosensus_scorings.csv')
+df_ml <- read.csv('data/ml_scorings.csv')
 
+# Generación de dataframes para lo siguiente
+# 1) Df consensus
+# 2) Df ml Csar
+# 3) Df ml DUD
+# 4) Df ml DEKOIS
 
+df_ml_csar <- df_ml %>% filter(X0 == 'csar')
+df_ml_dud <- df_ml %>% filter(X0 == 'dud')
+df_ml_dekois <- df_ml %>% filter(X0 == 'dekois')
 
 ##### MDS
 # Load the conformatiosn data
@@ -29,10 +38,21 @@ colnames(mds_data) <- paste(rep(subspace_names, each = length(n_dims)), n_dims, 
 df_plot <- cbind(mds_data, df_prot)
 rownames(df_prot) <- df_prot$X
 
-
+# list of ml estimator dataframes
+list_ml = list(csar = df_ml_csar,
+               dud = df_ml_dud,
+               dekois = df_ml_dekois)
 
 # Need to save this dataframe as an R object
-list_objs = list(mds_df = df_plot)
+list_objs = list(mds_df = df_plot,
+                 df_consensus = df_consensus,
+                 list_ml = list_ml
+                 )
+
+t = 'df_ml_csar'
+
+list_objs$list_ml[[t]]
+
 saveRDS(list_objs, 'data/data.rds')
 
 # colors
