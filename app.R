@@ -12,6 +12,8 @@ list_objs <- readRDS('data/data.rds')
 df_consensus <- list_objs$df_consensus
 list_ml <- list_objs$list_ml
 
+selected_features <- list_objs$selected_features
+
 # List of database names
 db_names <- list('CSAR' = 'csar', 'DUD' = 'dud', 'DEKOIS2.0' = 'dekois')
 
@@ -85,7 +87,6 @@ ui <- fluidPage(
                     choices = list('Docking Score' = 'dksc',
                                    'Ligand Efficiency Score' = 'dklef') 
                 ))),
-            
             hr(),
             # Consensus/
             fluidRow(
@@ -93,7 +94,7 @@ ui <- fluidPage(
                        selectInput(
                            inputId = 'consensus',
                            label = 'Evaluation Method (CS/ML):',
-                           choices = list('Manchine Learning Estimator' = 'ml_estimator',
+                           choices = list('Manchine Learning' = 'ml_estimator',
                                           'Consensus Scoring' = 'cons_scoring'
                                           ),
                        ), class = "col-md-6"),
@@ -169,23 +170,36 @@ ui <- fluidPage(
             fluidRow(
                 column(12,
                   selectInput(
-                    inputId = 'sel_feat_methos',
+                    inputId = 'sel_feat_methods',
                     label = 'Method used for Conformational Selection',
-                    choices = list('K-means Medoids' = 'kmeans', 
-                                   'Recursive Feature Selection' = 'rfe',
+                    choices = list('Recursive Feature Selection' = 'rfe',
+                                   'K-means Medoids' = 'kmeans', 
                                    'Correlated Features' = 'correlated',
                                    'Random Selection' = 'random'),
-                    selected = 'kmeans'
+                    selected = 'rfe'
                 ), class = "col-md-12")),
+            conditionalPanel(
+              condition = "input.sel_feat_methods == 'kmeans'",
+              fluidRow(
+                  column(12, radioButtons(
+                      inputId = 'mds_subspace',
+                      label = 'cMDS subspace (only affects k-means selection):',
+                      choices = list('Pisani Resiudes' = 'pisani', 
+                                     'Pocket Residues' = 'pocket'),
+                      selected = 'pisani',
+                      inline = TRUE
+                  ), class = "col-md-12")),
+            ),
+            hr(),
             fluidRow(
-                column(12, radioButtons(
-                    inputId = 'mds_subspace',
-                    label = 'cMDS subspace (only affects k-means selection):',
-                    choices = list('Pisani Resiudes' = 'pisani', 
-                                   'Pocket Residues' = 'pocket'),
-                    selected = 'pisani',
-                    inline = TRUE
-                ), class = "col-md-12")),
+              column(12,
+                     sliderInput(
+                       inputId = 'feature_slider',
+                       label = 'Number of features used for the evaluation:',
+                       min = 1, max = 402,
+                       value = 2
+                     ), class = "col-md-12")),
+            
             width = 3
         ),
 
@@ -227,13 +241,14 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output, session) {
-   
+    
+  
     #*** Linear Plot ***
      scores_data <- reactive({
         score_ <- input$dk_score
         
         # Get the value from the radio button
-        rd_value = input$sel_feat_methos
+        rd_value = input$sel_feat_methods
         # if kmeans is inside the values, update the value with mds_sub
         if('kmeans' == rd_value) {
             # Get subspace
@@ -247,7 +262,7 @@ server <- function(input, output, session) {
             'ml_estimator' = input$ml_methods
         )
         
-        # Selects the databases
+        # Selects the database
         databases <- switch (input$consensus,
              'cons_scoring' = input$database,
              'ml_estimator' = input$test_db
@@ -278,6 +293,8 @@ server <- function(input, output, session) {
         score_ <- input$dk_score
         dk_columns_ <- grep(score_, colnames(mds_df), ignore.case =T, value = T)
     })
+    
+    
     
     #####################
     #***** OUTPUTS *****#
@@ -320,7 +337,7 @@ server <- function(input, output, session) {
                 add_segments(x = 0, xend = 402, 
                              y = ref_values_[[db]], yend = ref_values_[[db]], 
                              showlegend = FALSE, name = db,  opacity = 0.5,
-                             line = list(color = 'black', dash = 'dot', 
+                             line = list(color = 'black', dash = 'dash', 
                                           linewidth = 3)) %>%
                 add_text(x = 50, y = ref_values_[[db]], 
                          text = paste('max dk', toupper(db)),
@@ -334,13 +351,22 @@ server <- function(input, output, session) {
                              'DUD'    = 'solid',
                              'DEKOIS' = 'solid')
             fig <- fig %>% add_trace(y = data_df[[col]], 
-                            name = col, line = list(dash = line_))
+                            name = col, line = list(dash = line_)
+                           )
         }
+        x_pos <- input$feature_slider
+        fig <- fig %>% 
+          add_segments(x = x_pos, xend = x_pos,
+                       y = 0, yend = 1.0, opacity = 0.5,
+                       showlegend = FALSE,
+                       line = list(color = '#f64a3a', 
+                                   dash = 'dot', linewidth = 4))
         fig %>% layout(xaxis = ax_lp, yaxis = yax_lp, 
                        paper_bgcolor = 'rgba(0,0,0,0)', 
                        legend = list(title = 
                                 list(text = '<b>Database & Method:</b>'))) %>%
-            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE) 
+            config(modeBarButtonsToRemove = conf_, displaylogo = FALSE)
+        
     })
     
     output$mdsPlot <- renderPlotly({
@@ -353,7 +379,7 @@ server <- function(input, output, session) {
                       text = text_hover,
                       size = mds_df$Inhib_mass,
                       hovertemplate = paste('%{text}')) %>% 
-            add_trace(x = NA, y = NA, name = 'Selected') %>% # Ampty trace
+            add_trace(x = NA, y = NA, name = 'Selected') %>% # Empty trace
             layout(xaxis = xax_mds, yaxis = yax_mds, dragmode = 'pan',
                    paper_bgcolor='rgba(0,0,0,0)', 
                    legend = list(title = 
@@ -366,6 +392,8 @@ server <- function(input, output, session) {
     })
     
     #*** Observe Events
+    
+    # Updates the selected
     
     # Oserve Event to uodated Databases for training
     observeEvent(input$train_db, {
@@ -405,7 +433,7 @@ server <- function(input, output, session) {
                        marker = list(color = 'rgba(0, 0, 0, 0)',
                                      line = list(color = 'rgba(0, 0, 0, 1)',
                                      width = 2)), name = 'Selected'))
-    }) 
+    })
     
     #**** Violin plots ****
     output$swarmPlot <- renderPlotly({
@@ -445,14 +473,50 @@ server <- function(input, output, session) {
         # Add the new trace
         plotlyProxy('mdsPlot', session) %>%
             plotlyProxyInvoke('addTraces', 
-                              list(x = sliced_df[[mds_[1]]], 
-                                   y = sliced_df[[mds_[2]]],
-                                   hoverinfo='skip',
-                                   size = 30, type = 'scatter', mode = 'markers',
-                                   marker = list(color = 'rgba(0, 0, 0, 0)',
-                                                 line = list(color = 'rgba(0, 0, 0, 1)',
+                      list(x = sliced_df[[mds_[1]]], 
+                           y = sliced_df[[mds_[2]]],
+                           hoverinfo='skip',
+                           size = 30, type = 'scatter', mode = 'markers',
+                           marker = list(color = 'rgba(0, 0, 0, 0)',
+                                         line = list(color = 'rgba(0, 0, 0, 1)',
+                                         width = 2)), name = 'Selected'))
+    })
+    
+    
+    
+    # Selection from slider
+    observeEvent({input$feature_slider
+                  input$sel_feat_methods
+                  input$mds_subspace
+                  }, {
+      # Get the correct features
+      n_feat <- input$feature_slider
+      
+      method <- input$sel_feat_methods # Get the method
+      if('kmeans' == method) {
+        # Get subspace
+        mds_sub <- input$mds_subspace
+        # Update the value
+        method <- paste0('kmeans', '-', mds_sub)
+      }
+      
+      mds_ <- mds_subspaces()
+      features <- selected_features[[method]][[n_feat]] + 1
+      sliced_df <- mds_df[features, ]
+      # # Remove the previous selected point if it exist
+      plotlyProxy('mdsPlot', session) %>%
+        plotlyProxyInvoke("deleteTraces", -1)
+      # Add the new trace
+      plotlyProxy('mdsPlot', session) %>%
+        plotlyProxyInvoke('addTraces',
+                  list(x = sliced_df[[mds_[1]]], 
+                       y = sliced_df[[mds_[2]]], 
+                       hoverinfo='skip',
+                       size = 30, type = 'scatter', mode = 'markers',
+                       marker = list(color = 'rgba(0, 0, 0, 0)',
+                                     line = list(color = 'rgba(0, 0, 0, 1)',
                                                  width = 2)), name = 'Selected'))
-    }) 
+    })
     
     output$click <- renderPrint({
         d <- event_data("plotly_click")

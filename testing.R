@@ -3,6 +3,21 @@ library(ggplot2)
 library(plotly)
 library(dplyr)
 
+##### Selected features
+library(rjson)
+json_corr <- fromJSON(file='data/list_of_confs_per_k_drop_correlated_features.json')
+confs_corr <- json_corr$list_of_confs_corr
+
+json_km_pisani <- fromJSON(file='data/list_of_confs_per_k_pisani_mds.json')
+confs_km_pisani <- json_km_pisani$list_of_confs_pisani
+
+json_km_pocket <- fromJSON(file='data/list_of_confs_per_k_pocket_mds.json')
+confs_km_pocket <- json_km_pocket$list_of_confs_pocket
+
+# Create the list of lists of features
+selected_features <- list('correlated' = confs_corr, 'kmeans-pisani' = confs_km_pisani,
+                          'kmeans-pocket' = confs_km_pocket)
+
 ##### CONSENSUS SCORIGS
 df_consensus <- read.csv('data/cosensus_scorings.csv')
 df_ml <- read.csv('data/ml_scorings.csv')
@@ -46,12 +61,11 @@ list_ml = list(csar = df_ml_csar,
 # Need to save this dataframe as an R object
 list_objs = list(mds_df = df_plot,
                  df_consensus = df_consensus,
-                 list_ml = list_ml
+                 list_ml = list_ml,
+                 selected_features = selected_features
                  )
 
-t = 'df_ml_csar'
 
-list_objs$list_ml[[t]]
 
 saveRDS(list_objs, 'data/data.rds')
 
