@@ -3,6 +3,9 @@ library(shinythemes)
 library(plotly)
 library(dplyr)
 library(shinyjs)
+library(shinycssloaders)
+
+options(spinner.color="#0275D8", spinner.color.background="#ffffff", spinner.size=1)
 
 # Load the date once
 # Load the RDS file
@@ -69,6 +72,9 @@ pal_violin <- c('#2a7886', '#f1935c', '#ed7575')
 ##### USER INTERFACE #####
 ui <- fluidPage(
     theme=shinytheme('journal'),
+    tags$head(
+      tags$link(rel = "stylesheet", type = "text/css", href = "styles.css")
+    ),    
 
     # Application title
     titlePanel("CDK2 Protein: Consensus/ML Scorings"),
@@ -79,16 +85,17 @@ ui <- fluidPage(
     sidebarLayout(
         sidebarPanel(
             # Feature Selection and Score Type Parameters
+            h3('Docking score type'),
             fluidRow(
                 column(12, 
                     selectInput(
                     inputId = 'dk_score',
-                    label = 'Docking score type:',
+                    label = 'Select the Docking Score type:',
                     choices = list('Docking Score' = 'dksc',
                                    'Ligand Efficiency Score' = 'dklef') 
                 ))),
             hr(),
-            # Consensus/
+            h3('Evaluation method'),
             fluidRow(
                 column(12, 
                        selectInput(
@@ -126,13 +133,14 @@ ui <- fluidPage(
             ),
             hr(),
             # Feature Selection and Score Type Parameters
+            h3('Ligand databases'),
             fluidRow(
                 column(12, 
                     conditionalPanel(
                        condition = "input.consensus == 'cons_scoring'",
                        checkboxGroupInput(
                            inputId = 'database',
-                           label = 'Ligand Database (line plot):',
+                           label = 'Ligand Database (Consensus Scoring):',
                            choices = list('CSAR' = 'csar',
                                           'DUD' = 'dud',
                                           'DEKOIS2.0' = 'dekois'),
@@ -166,17 +174,17 @@ ui <- fluidPage(
                   )
                 ),
             hr(),
-            
+            h3('Conformational Selection'),
             fluidRow(
                 column(12,
                   selectInput(
                     inputId = 'sel_feat_methods',
                     label = 'Method used for Conformational Selection',
-                    choices = list('Recursive Feature Selection' = 'rfe',
-                                   'K-means Medoids' = 'kmeans', 
+                    choices = list('K-means Medoids' = 'kmeans',
+                                   'Recursive Feature Selection' = 'rfe',
                                    'Correlated Features' = 'correlated',
-                                   'Random Selection' = 'random'),
-                    selected = 'rfe'
+                                   'Random Selection (means)' = 'random'),
+                    selected = 'kmeans'
                 ), class = "col-md-12")),
             conditionalPanel(
               condition = "input.sel_feat_methods == 'kmeans'",
@@ -190,14 +198,13 @@ ui <- fluidPage(
                       inline = TRUE
                   ), class = "col-md-12")),
             ),
-            hr(),
             fluidRow(
               column(12,
                      sliderInput(
                        inputId = 'feature_slider',
                        label = 'Number of features used for the evaluation:',
-                       min = 1, max = 402,
-                       value = 2
+                       min = 0, max = 200,
+                       value = 1
                      ), class = "col-md-12")),
             
             width = 3
@@ -207,7 +214,7 @@ ui <- fluidPage(
         mainPanel(
             # Main Plot: Line plot for Consensus and ML AUC values
             fluidRow(
-                div(h4('Title of the LinePlot',
+                div(h4(textOutput("linePlot_title"),
                    class = 'text-center'),
                    style = 'margin-bottom: -20px; z-index: 100'),
                 plotlyOutput(
@@ -222,7 +229,7 @@ ui <- fluidPage(
                        div(h4(textOutput("mds_title"), 
                           class = 'text-center'),
                           style = 'margin-bottom: -20px; z-index: 100'),
-                       plotlyOutput(outputId = 'mdsPlot')),
+                       withSpinner(plotlyOutput(outputId = 'mdsPlot'))),
                        class = "col-md-6"),
                 # Violin Plots of AUC Values
                 column(12, 
@@ -236,6 +243,9 @@ ui <- fluidPage(
            # verbatimTextOutput("click")
            width = 9
         )
+    ),
+    div(class = "footer",
+        'J. Ricci-Lopez, 2020'
     )
 )
 
@@ -318,6 +328,32 @@ server <- function(input, output, session) {
         viol_title <- paste0('AUC Values (Vinardo ', text_, ')')
         output$viol_title <- renderText({viol_title})
     })
+    # Line plot tile
+    observe({
+      # Docking Score
+      dk_score <- switch(input$dk_score,
+          'dksc' = '(DkSc)',
+          'dklef' = '(DkLEf)')
+      # Evaluation
+      eval_method <- switch (input$consensus,
+          'ml_estimator' = 'Machine Learning',
+          'cons_scoring' = 'Consensus Scoring'
+      )
+      # Training if ML
+      train_db <- ''
+      if(input$consensus == 'ml_estimator'){
+        train_db <- paste0('[', toupper(input$train_db), ' training]')
+      }
+      # Feature Selection
+      feature_sel <- switch (input$sel_feat_methods,
+           'kmeans' = 'K-means Selection',
+           'rfe' = 'Recursive Feature Selection',
+           'correlated' = 'Dropping Correlated Features',
+           'random' = 'Random Selection'
+      )
+      linePlot_title <- paste(eval_method, train_db, dk_score, '-', feature_sel)
+      output$linePlot_title <- renderText({linePlot_title})
+    })
     
     #***** Linear Plots
     output$linearPlot <- renderPlotly({
@@ -357,10 +393,10 @@ server <- function(input, output, session) {
         x_pos <- input$feature_slider
         fig <- fig %>% 
           add_segments(x = x_pos, xend = x_pos,
-                       y = 0, yend = 1.0, opacity = 0.5,
+                       y = 0, yend = 1.0, opacity = 0.8,
                        showlegend = FALSE,
                        line = list(color = '#f64a3a', 
-                                   dash = 'dot', linewidth = 4))
+                                   dash = 'dot', linewidth = 6))
         fig %>% layout(xaxis = ax_lp, yaxis = yax_lp, 
                        paper_bgcolor = 'rgba(0,0,0,0)', 
                        legend = list(title = 
@@ -439,11 +475,11 @@ server <- function(input, output, session) {
     output$swarmPlot <- renderPlotly({
         # DkScore and DkLEff
         score_cols <- dk_score()
-
+        points <- selected_poins()
         fig_swarm <- plot_ly(type = 'violin', data = mds_df, 
                              points = "all", jitter = 1,
                              side = 'positive',
-                             text = text)
+                             text = text, selectedpoints = points)
         i = 0
         for (score_ in score_cols) {
             i = i + 1
@@ -451,6 +487,7 @@ server <- function(input, output, session) {
                       marker = list(size = marker_size), 
                       name = strsplit(score_, '_')[[1]][1],
                       color = I(pal_violin[i]),
+                      text = text_hover,
                       box = list(visible = T), key = rownames(mds_df))
         }
         fig_swarm <- layout(fig_swarm, xaxis = xax_sw, yaxis = yax_sw,
@@ -482,6 +519,20 @@ server <- function(input, output, session) {
                                          width = 2)), name = 'Selected'))
     })
     
+    # Reactive selection of points
+    selected_poins <- reactive({
+      n_feat <- input$feature_slider
+      
+      method <- input$sel_feat_methods # Get the method
+      if('kmeans' == method) {
+        # Get subspace
+        mds_sub <- input$mds_subspace
+        # Update the value
+        method <- paste0('kmeans', '-', mds_sub)
+      }
+      features <- selected_features[[method]][[n_feat]] + 1
+      features
+    })
     
     
     # Selection from slider

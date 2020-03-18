@@ -1,0 +1,28 @@
+body {
+  color: #000;
+}
+
+h2 {
+  color: #444;
+}
+
+h3 {
+  font-size: 22px;
+  color: #0d4c5f;
+}
+
+.irs-grid-text {
+  font-size: 0.8em;
+  color: #000;
+}
+
+hr {
+    margin-top: 5px;
+    margin-bottom: 21px;
+    border: 0;
+    border-top: 1px solid #7ba4ad;
+}
+
+.well {
+    background-color: #ece7d6;
+}

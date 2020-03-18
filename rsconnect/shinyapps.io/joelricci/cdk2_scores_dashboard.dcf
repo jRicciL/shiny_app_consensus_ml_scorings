@@ -5,8 +5,8 @@ account: joelricci
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 1922633
-bundleId: 2863523
+bundleId: 2892430
 url: https://joelricci.shinyapps.io/cdk2_scores_dashboard/
-when: 1583743989.03931
+when: 1584497143.89698
 asMultiple: FALSE
 asStatic: FALSE
